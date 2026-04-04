@@ -28,7 +28,7 @@ class BybitService:
         """
         Initialize BybitService
         """
-        logger.info(f"Initializing Bybit Service - Testnet: {Config.TESTNET}, API Key: {Config.ACCESS_KEY}")
+        logger.info(f"Initializing Bybit Service - Testnet: {Config.TESTNET}, API Key: {'configured' if Config.ACCESS_KEY else 'MISSING'}")
         self.client = HTTP(
             testnet=Config.TESTNET,
             api_key=Config.ACCESS_KEY,
@@ -143,10 +143,11 @@ class BybitService:
     # Order related methods
     def place_order(self, category: str, symbol: str, side: str, orderType: str,
                     qty: str, price: Optional[str] = None,
+                    positionIdx: Optional[int] = None,
                     timeInForce: Optional[str] = None, orderLinkId: Optional[str] = None,
                     isLeverage: Optional[int] = None, orderFilter: Optional[str] = None,
                     triggerPrice: Optional[str] = None, triggerBy: Optional[str] = None,
-                    orderIv: Optional[str] = None, positionIdx: Optional[int] = None,
+                    orderIv: Optional[str] = None,
                     takeProfit: Optional[str] = None, stopLoss: Optional[str] = None,
                     tpTriggerBy: Optional[str] = None, slTriggerBy: Optional[str] = None,
                     tpLimitPrice: Optional[str] = None, slLimitPrice: Optional[str] = None,
