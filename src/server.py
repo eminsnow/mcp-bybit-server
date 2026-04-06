@@ -15,42 +15,16 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Log environment variables
-logger.debug("Current environment variables:")
-for key, value in os.environ.items():
-    if key in ["MEMBER_ID", "ACCESS_KEY", "SECRET_KEY", "TESTNET"]:
-        logger.debug(f"{key}: {value}")
+# BEZPIECZENSTWO: NIE logujemy kluczy API
 
 # Create BybitService instance
 bybit_service = BybitService()
 
-# Register MCP tools
-mcp = FastMCP(
-    env={
-        "ACCESS_KEY": os.getenv("ACCESS_KEY"),
-        "SECRET_KEY": os.getenv("SECRET_KEY"),
-    }
-)
+# BEZPIECZENSTWO: NIE przekazujemy kluczy do MCP env
+# BEZPIECZENSTWO: USUNIETO get_secret_key() i get_access_key() -- LLM NIE moze wyciagnac kluczy
+mcp = FastMCP()
 
-@mcp.tool()
-def get_secret_key(
-) -> str:
-    """
-    Get secret key from environment variables
-    :return: Secret key
-    """
-    return os.getenv("SECRET_KEY")
-
-@mcp.tool()
-def get_access_key(
-) -> str:
-    """
-    Get access key from environment variables
-    :return: Access key
-    """
-    return os.getenv("ACCESS_KEY")
-
-# Register MCP tools
+from config import Config
 @mcp.tool()
 def get_orderbook(
     category: str = Field(description="Category (spot, linear, inverse, etc.)"),
@@ -336,12 +310,39 @@ def place_order(
         https://bybit-exchange.github.io/docs/v5/order/create-order
     """
     try:
+        # BEZPIECZENSTWO: Trading musi byc jawnie wlaczony
+        if not Config.TRADING_ENABLED:
+            return {"error": "Trading is DISABLED. Set TRADING_ENABLED=true to enable."}
+
+        # BEZPIECZENSTWO: Walidacja inputow
+        if side not in ("Buy", "Sell"):
+            return {"error": f"Invalid side: {side}. Must be 'Buy' or 'Sell'."}
+        if orderType not in ("Market", "Limit"):
+            return {"error": f"Invalid orderType: {orderType}. Must be 'Market' or 'Limit'."}
+        if category not in ("spot", "linear", "inverse", "option"):
+            return {"error": f"Invalid category: {category}. Must be 'spot', 'linear', 'inverse', or 'option'."}
+
+        # BEZPIECZENSTWO: Max order size check
+        from config import MAX_ORDER_SIZE_USDT
+        try:
+            qty_float = float(qty)
+            if category == "spot" and side == "Buy" and orderType == "Market":
+                # Market buy na spot -- qty jest w USDT
+                if qty_float > MAX_ORDER_SIZE_USDT:
+                    return {"error": f"Order size {qty} USDT exceeds max {MAX_ORDER_SIZE_USDT} USDT. Adjust MAX_ORDER_SIZE_USDT env var."}
+        except ValueError:
+            return {"error": f"Invalid qty: {qty}. Must be a number."}
+
         result = bybit_service.place_order(
-            category, symbol, side, orderType, qty, price, positionIdx,
-            timeInForce, orderLinkId, isLeverage, orderFilter,
-            triggerPrice, triggerBy, orderIv, takeProfit,
-            stopLoss, tpTriggerBy, slTriggerBy, tpLimitPrice,
-            slLimitPrice, tpOrderType, slOrderType
+            category=category, symbol=symbol, side=side, orderType=orderType,
+            qty=qty, price=price, positionIdx=positionIdx,
+            timeInForce=timeInForce, orderLinkId=orderLinkId,
+            isLeverage=isLeverage, orderFilter=orderFilter,
+            triggerPrice=triggerPrice, triggerBy=triggerBy, orderIv=orderIv,
+            takeProfit=takeProfit, stopLoss=stopLoss,
+            tpTriggerBy=tpTriggerBy, slTriggerBy=slTriggerBy,
+            tpLimitPrice=tpLimitPrice, slLimitPrice=slLimitPrice,
+            tpOrderType=tpOrderType, slOrderType=slOrderType
         )
         if result.get("retCode") != 0:
             logger.error(f"Failed to place order: {result.get('retMsg')}")
@@ -380,6 +381,8 @@ def cancel_order(
         https://bybit-exchange.github.io/docs/v5/order/cancel-order
     """
     try:
+        if not Config.TRADING_ENABLED:
+            return {"error": "Trading is DISABLED. Set TRADING_ENABLED=true to enable."}
         result = bybit_service.cancel_order(category, symbol, orderId, orderLinkId, orderFilter)
         if result.get("retCode") != 0:
             logger.error(f"Failed to cancel order: {result.get('retMsg')}")
@@ -670,11 +673,7 @@ def main():
         logger.info("MCP server starting...")
         print("MCP server starting...", file=sys.stderr)
 
-        # Log environment variables again
-        logger.debug("Server start environment variables:")
-        for key, value in os.environ.items():
-            if key in ["MEMBER_ID", "ACCESS_KEY", "SECRET_KEY", "TESTNET"]:
-                logger.debug(f"{key}: {value}")
+        # BEZPIECZENSTWO: NIE logujemy kluczy API
 
         mcp.run(transport="stdio")
     except Exception as e:
