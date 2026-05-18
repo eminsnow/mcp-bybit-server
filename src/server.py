@@ -169,26 +169,34 @@ def get_wallet_balance(
 @mcp.tool()
 def get_positions(
     category: str = Field(description="Category (spot, linear, inverse, etc.)"),
-    symbol: Optional[str] = Field(default=None, description="Symbol (e.g., BTCUSDT)")
+    symbol: Optional[str] = Field(default=None, description="Symbol (e.g., BTCUSDT)"),
+    settleCoin: Optional[str] = Field(default=None, description="Settle coin (e.g., USDT) — list all positions on perps settled in this coin. Use this to see ALL open positions in one call without iterating symbols."),
+    baseCoin: Optional[str] = Field(default=None, description="Base coin (e.g., BTC) — list all positions whose base asset matches.")
 ) -> Dict:
     """
     Get position information
 
+    For linear/inverse categories Bybit requires one of: symbol, settleCoin, or baseCoin.
+    Use settleCoin="USDT" to list every open USDT-perp position in a single call.
+
     Args:
         category (str): Category (spot, linear, inverse, etc.)
         symbol (Optional[str]): Symbol (e.g., BTCUSDT)
+        settleCoin (Optional[str]): Settle coin (e.g., USDT)
+        baseCoin (Optional[str]): Base coin (e.g., BTC)
 
     Returns:
         Dict: Position information
 
     Example:
-        get_positions("spot", "BTCUSDT")
+        get_positions("linear", settleCoin="USDT")   # all USDT-perp positions
+        get_positions("linear", symbol="BTCUSDT")    # specific symbol
 
     Reference:
         https://bybit-exchange.github.io/docs/v5/position
     """
     try:
-        result = bybit_service.get_positions(category, symbol)
+        result = bybit_service.get_positions(category, symbol, settleCoin, baseCoin)
         if result.get("retCode") != 0:
             logger.error(f"Failed to get position information: {result.get('retMsg')}")
             return {"error": result.get("retMsg")}
@@ -403,7 +411,9 @@ def get_order_history(
     orderStatus: Optional[str] = Field(default=None, description="Order status"),
     startTime: Optional[int] = Field(default=None, description="Start time in milliseconds"),
     endTime: Optional[int] = Field(default=None, description="End time in milliseconds"),
-    limit: int = Field(default=50, description="Number of orders to retrieve")
+    limit: int = Field(default=50, description="Number of orders to retrieve"),
+    settleCoin: Optional[str] = Field(default=None, description="Settle coin (e.g., USDT) — list all orders settled in this coin (alternative to symbol)."),
+    baseCoin: Optional[str] = Field(default=None, description="Base coin (e.g., BTC) — list all orders whose base asset matches.")
 ) -> Dict:
     """
     Get order history
@@ -418,12 +428,15 @@ def get_order_history(
         startTime (Optional[int]): Start time in milliseconds
         endTime (Optional[int]): End time in milliseconds
         limit (int): Number of orders to retrieve
+        settleCoin (Optional[str]): Settle coin (e.g., USDT)
+        baseCoin (Optional[str]): Base coin (e.g., BTC)
 
     Returns:
         Dict: Order history
 
     Example:
-        get_order_history("spot", "BTCUSDT", "123456789", "link123", "Order", "Created", 1625097600000, 1625184000000, 10)
+        get_order_history("linear", settleCoin="USDT", limit=50)
+        get_order_history("spot", "BTCUSDT", "123456789")
 
     Reference:
         https://bybit-exchange.github.io/docs/v5/order/order-list
@@ -431,7 +444,8 @@ def get_order_history(
     try:
         result = bybit_service.get_order_history(
             category, symbol, orderId, orderLinkId,
-            orderFilter, orderStatus, startTime, endTime, limit
+            orderFilter, orderStatus, startTime, endTime, limit,
+            settleCoin, baseCoin
         )
         if result.get("retCode") != 0:
             logger.error(f"Failed to get order history: {result.get('retMsg')}")
@@ -449,10 +463,15 @@ def get_open_orders(
     orderId: Optional[str] = Field(default=None, description="Order ID"),
     orderLinkId: Optional[str] = Field(default=None, description="Order link ID"),
     orderFilter: Optional[str] = Field(default=None, description="Order filter"),
-    limit: int = Field(default=50, description="Number of orders to retrieve")
+    limit: int = Field(default=50, description="Number of orders to retrieve"),
+    settleCoin: Optional[str] = Field(default=None, description="Settle coin (e.g., USDT) — list all open orders settled in this coin (alternative to symbol). Use this to see ALL pending orders in one call."),
+    baseCoin: Optional[str] = Field(default=None, description="Base coin (e.g., BTC) — list all open orders whose base asset matches.")
 ) -> Dict:
     """
     Get open orders
+
+    For linear/inverse categories Bybit requires one of: symbol, settleCoin, or baseCoin.
+    Use settleCoin="USDT" to list every pending order in a single call.
 
     Args:
         category (str): Category (spot, linear, inverse, etc.)
@@ -461,19 +480,23 @@ def get_open_orders(
         orderLinkId (Optional[str]): Order link ID
         orderFilter (Optional[str]): Order filter
         limit (int): Number of orders to retrieve
+        settleCoin (Optional[str]): Settle coin (e.g., USDT)
+        baseCoin (Optional[str]): Base coin (e.g., BTC)
 
     Returns:
         Dict: Open orders
 
     Example:
-        get_open_orders("spot", "BTCUSDT", "123456789", "link123", "Order", 10)
+        get_open_orders("linear", settleCoin="USDT")   # all pending USDT-perp orders
+        get_open_orders("spot", "BTCUSDT")             # specific symbol
 
     Reference:
         https://bybit-exchange.github.io/docs/v5/order/open-order
     """
     try:
         result = bybit_service.get_open_orders(
-            category, symbol, orderId, orderLinkId, orderFilter, limit
+            category, symbol, orderId, orderLinkId, orderFilter, limit,
+            settleCoin, baseCoin
         )
         if result.get("retCode") != 0:
             logger.error(f"Failed to get open orders: {result.get('retMsg')}")

@@ -124,21 +124,32 @@ class BybitService:
             coin=coin
         )
 
-    def get_positions(self, category: str, symbol: Optional[str] = None) -> Dict:
+    def get_positions(self, category: str, symbol: Optional[str] = None,
+                      settleCoin: Optional[str] = None,
+                      baseCoin: Optional[str] = None) -> Dict:
         """
         Get position information
 
         Args:
             category (str): Category (spot, linear, inverse, etc.)
-            symbol (Optional[str]): Symbol (e.g., BTCUSDT)
+            symbol (Optional[str]): Symbol (e.g., BTCUSDT). Bybit requires
+                one of symbol/settleCoin/baseCoin for linear/inverse categories.
+            settleCoin (Optional[str]): Settle coin (e.g., USDT) — list all
+                positions on perps settled in this coin.
+            baseCoin (Optional[str]): Base coin (e.g., BTC) — list all
+                positions whose base asset matches.
 
         Returns:
             Dict: Position information
         """
-        return self.client.get_positions(
-            category=category,
-            symbol=symbol
-        )
+        kwargs = {"category": category}
+        if symbol is not None:
+            kwargs["symbol"] = symbol
+        if settleCoin is not None:
+            kwargs["settleCoin"] = settleCoin
+        if baseCoin is not None:
+            kwargs["baseCoin"] = baseCoin
+        return self.client.get_positions(**kwargs)
 
     # Order related methods
     def place_order(self, category: str, symbol: str, side: str, orderType: str,
@@ -347,7 +358,9 @@ class BybitService:
                           orderId: Optional[str] = None, orderLinkId: Optional[str] = None,
                           orderFilter: Optional[str] = None, orderStatus: Optional[str] = None,
                           startTime: Optional[int] = None, endTime: Optional[int] = None,
-                          limit: int = 50) -> Dict:
+                          limit: int = 50,
+                          settleCoin: Optional[str] = None,
+                          baseCoin: Optional[str] = None) -> Dict:
         """
         Get order history
 
@@ -361,25 +374,29 @@ class BybitService:
             startTime (Optional[int]): Start time in milliseconds
             endTime (Optional[int]): End time in milliseconds
             limit (int): Number of orders to retrieve
+            settleCoin (Optional[str]): Settle coin (e.g., USDT) — list all
+                orders settled in this coin (alternative to symbol).
+            baseCoin (Optional[str]): Base coin (e.g., BTC) — list all
+                orders whose base asset matches.
 
         Returns:
             Dict: Order history
         """
-        return self.client.get_order_history(
-            category=category,
-            symbol=symbol,
-            orderId=orderId,
-            orderLinkId=orderLinkId,
-            orderFilter=orderFilter,
-            orderStatus=orderStatus,
-            startTime=startTime,
-            endTime=endTime,
-            limit=limit
-        )
+        kwargs = {"category": category, "limit": limit}
+        for k, v in [("symbol", symbol), ("orderId", orderId),
+                     ("orderLinkId", orderLinkId), ("orderFilter", orderFilter),
+                     ("orderStatus", orderStatus), ("startTime", startTime),
+                     ("endTime", endTime), ("settleCoin", settleCoin),
+                     ("baseCoin", baseCoin)]:
+            if v is not None:
+                kwargs[k] = v
+        return self.client.get_order_history(**kwargs)
 
     def get_open_orders(self, category: str, symbol: Optional[str] = None,
                         orderId: Optional[str] = None, orderLinkId: Optional[str] = None,
-                        orderFilter: Optional[str] = None, limit: int = 50) -> Dict:
+                        orderFilter: Optional[str] = None, limit: int = 50,
+                        settleCoin: Optional[str] = None,
+                        baseCoin: Optional[str] = None) -> Dict:
         """
         Get open orders
 
@@ -390,18 +407,21 @@ class BybitService:
             orderLinkId (Optional[str]): Order link ID
             orderFilter (Optional[str]): Order filter
             limit (int): Number of orders to retrieve
+            settleCoin (Optional[str]): Settle coin (e.g., USDT) — list all
+                open orders settled in this coin (alternative to symbol).
+            baseCoin (Optional[str]): Base coin (e.g., BTC) — list all
+                open orders whose base asset matches.
 
         Returns:
             Dict: Open orders
         """
-        return self.client.get_open_orders(
-            category=category,
-            symbol=symbol,
-            orderId=orderId,
-            orderLinkId=orderLinkId,
-            orderFilter=orderFilter,
-            limit=limit
-        )
+        kwargs = {"category": category, "limit": limit}
+        for k, v in [("symbol", symbol), ("orderId", orderId),
+                     ("orderLinkId", orderLinkId), ("orderFilter", orderFilter),
+                     ("settleCoin", settleCoin), ("baseCoin", baseCoin)]:
+            if v is not None:
+                kwargs[k] = v
+        return self.client.get_open_orders(**kwargs)
 
     # Leverage related methods
     def set_leverage(self, category: str, symbol: str, buyLeverage: str,
