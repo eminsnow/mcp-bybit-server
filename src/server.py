@@ -615,6 +615,45 @@ def get_api_key_information() -> Dict:
 
 
 @mcp.tool()
+def get_risk_limit(
+    category: str = Field(description="Category ('linear' for USDT-perp, 'inverse' for coin-margined perp)"),
+    symbol: Optional[str] = Field(default=None, description="Symbol (e.g., BTCUSDT). If omitted, returns all symbols in category.")
+) -> Dict:
+    """
+    Get risk limit tiers for Bybit perpetual contracts.
+
+    Each tier defines maximum position notional (USD), maintenance margin rate
+    (MMR), initial margin rate (IMR), and maximum leverage. As a position's
+    notional grows, Bybit auto-promotes it to higher tiers with worse margin
+    terms (higher IM/MM, lower max leverage). Critical for position sizing.
+
+    Args:
+        category (str): 'linear' | 'inverse'
+        symbol (Optional[str]): Symbol like 'BTCUSDT' or 'BSBUSDT'. Omit for all.
+
+    Returns:
+        Dict: List of tier dicts with id, riskLimitValue, maintenanceMargin,
+              initialMargin, maxLeverage, isLowestRisk.
+
+    Example:
+        get_risk_limit("linear", "BSBUSDT")
+        # Returns: 30 tiers ranging from $5K @ 25x to $2.5M @ 1x
+
+    Reference:
+        https://bybit-exchange.github.io/docs/v5/market/risk-limit
+    """
+    try:
+        result = bybit_service.get_risk_limit(category, symbol)
+        if result.get("retCode") != 0:
+            logger.error(f"Failed to get risk limit: {result.get('retMsg')}")
+            return {"error": result.get("retMsg")}
+        return result
+    except Exception as e:
+        logger.error(f"Failed to get risk limit: {e}", exc_info=True)
+        return {"error": str(e)}
+
+
+@mcp.tool()
 def get_instruments_info(
     category: str = Field(description="Category (spot, linear, inverse, etc.)"),
     symbol: str = Field(description="Symbol (e.g., BTCUSDT)"),
@@ -672,6 +711,7 @@ Available tools:
 - set_margin_mode(category, symbol, tradeMode, buyLeverage, sellLeverage) - Set margin mode: Set margin mode. tradeMode, buyLeverage, and sellLeverage parameters can be used to specify the settings.
 - get_api_key_information() - Get API key information: Retrieve API key information.
 - get_instruments_info(category, symbol, status, baseCoin) - Get exchange information: Retrieve exchange information. status and baseCoin parameters can be used to specify the retrieval conditions.
+- get_risk_limit(category, symbol) - Get risk limit tiers: Retrieve all risk-limit tiers (max notional, MMR, IMR, max leverage) for a perpetual contract. Critical for position sizing.
 
 Note: This tool executes a backtest simulation, it does not interact with the live Bybit API for trading.
 Invokes the `run_strategy` function from `backtest.py`.

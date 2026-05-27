@@ -107,6 +107,35 @@ class BybitService:
             symbol=symbol
         )
 
+    def get_risk_limit(self, category: str, symbol: Optional[str] = None) -> Dict:
+        """
+        Get risk limit tiers for a symbol or all symbols in a category.
+
+        Each tier defines maximum position notional, maintenance margin rate (MMR),
+        initial margin rate (IMR), and maximum leverage. As position size grows,
+        Bybit auto-promotes the position to higher tiers with worse margin terms.
+
+        Args:
+            category (str): Category ('linear', 'inverse')
+            symbol (Optional[str]): Symbol (e.g., BTCUSDT). If omitted, returns all symbols.
+
+        Returns:
+            Dict: Risk limit information with tier list containing:
+                  - id: tier ID
+                  - riskLimitValue: max position notional (USD)
+                  - maintenanceMargin: MMR (decimal)
+                  - initialMargin: IMR (decimal)
+                  - maxLeverage: max leverage at this tier
+                  - isLowestRisk: 1 if this is the default/lowest-risk tier
+
+        Reference:
+            https://bybit-exchange.github.io/docs/v5/market/risk-limit
+        """
+        params = {"category": category}
+        if symbol:
+            params["symbol"] = symbol
+        return self.client.get_risk_limit(**params)
+
     # Account related methods
     def get_wallet_balance(self, accountType: str, coin: Optional[str] = None) -> Dict:
         """
