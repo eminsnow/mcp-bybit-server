@@ -187,11 +187,15 @@ class BybitService:
                     timeInForce: Optional[str] = None, orderLinkId: Optional[str] = None,
                     isLeverage: Optional[int] = None, orderFilter: Optional[str] = None,
                     triggerPrice: Optional[str] = None, triggerBy: Optional[str] = None,
+                    triggerDirection: Optional[int] = None,
                     orderIv: Optional[str] = None,
                     takeProfit: Optional[str] = None, stopLoss: Optional[str] = None,
                     tpTriggerBy: Optional[str] = None, slTriggerBy: Optional[str] = None,
                     tpLimitPrice: Optional[str] = None, slLimitPrice: Optional[str] = None,
-                    tpOrderType: Optional[str] = None, slOrderType: Optional[str] = None) -> Dict:
+                    tpOrderType: Optional[str] = None, slOrderType: Optional[str] = None,
+                    tpslMode: Optional[str] = None,
+                    reduceOnly: Optional[bool] = None,
+                    closeOnTrigger: Optional[bool] = None) -> Dict:
         """
         Execute order
 
@@ -227,8 +231,16 @@ class BybitService:
                 - Order: General order (default)
                 - tpslOrder: TP/SL order
                 - StopOrder: Stop order
-            triggerPrice (Optional[str]): Trigger price
-            triggerBy (Optional[str]): Trigger basis
+            triggerPrice (Optional[str]): Trigger price for conditional orders
+            triggerBy (Optional[str]): Trigger basis (LastPrice, MarkPrice, IndexPrice)
+            triggerDirection (Optional[int]): Conditional order trigger direction.
+                REQUIRED for conditional/stop orders (orderFilter=StopOrder).
+                - 1: Triggered when LAST PRICE RISES through triggerPrice
+                     (e.g., Sell-stop entry above market for short hedge,
+                      Buy-stop entry above market for breakout long)
+                - 2: Triggered when LAST PRICE FALLS through triggerPrice
+                     (e.g., Sell-stop loss below market for long position,
+                      Buy-stop entry below market for breakout short)
             orderIv (Optional[str]): Order volatility
             positionIdx (Optional[int]): Position index
                 - Required for futures (linear/inverse) trading
@@ -243,6 +255,14 @@ class BybitService:
             slLimitPrice (Optional[str]): Stop loss limit price
             tpOrderType (Optional[str]): Take profit order type (Market, Limit)
             slOrderType (Optional[str]): Stop loss order type (Market, Limit)
+            tpslMode (Optional[str]): TP/SL mode for futures positions
+                - "Full": TP/SL closes entire position (default for hedge mode)
+                - "Partial": TP/SL closes part of position (requires explicit qty)
+            reduceOnly (Optional[bool]): If True, order only reduces position size.
+                Critical for hedge closes (e.g., closing short hedge with buy).
+                Prevents accidental position opening.
+            closeOnTrigger (Optional[bool]): If True, conditional order will close
+                the position when triggered (used for TP/SL on existing positions).
 
         Returns:
             Dict: Order result
@@ -317,6 +337,8 @@ class BybitService:
                 request_data["triggerPrice"] = triggerPrice
             if triggerBy is not None:
                 request_data["triggerBy"] = triggerBy
+            if triggerDirection is not None:
+                request_data["triggerDirection"] = triggerDirection
             if orderIv is not None:
                 request_data["orderIv"] = orderIv
             if positionIdx is not None:
@@ -337,6 +359,24 @@ class BybitService:
                 request_data["tpOrderType"] = tpOrderType
             if slOrderType is not None:
                 request_data["slOrderType"] = slOrderType
+            if tpslMode is not None:
+                request_data["tpslMode"] = tpslMode
+            if reduceOnly is not None:
+                request_data["reduceOnly"] = reduceOnly
+            if closeOnTrigger is not None:
+                request_data["closeOnTrigger"] = closeOnTrigger
+
+            # Auto-infer triggerDirection if conditional order placed without explicit direction
+            # This is a safety net for backward compatibility — explicit param still recommended
+            if triggerPrice is not None and triggerDirection is None and orderFilter == "StopOrder":
+                # Fetch current price from instruments_info or use a sensible default
+                # For now: log warning that triggerDirection should be specified
+                logger.warning(
+                    f"Conditional order placed without explicit triggerDirection. "
+                    f"Bybit requires triggerDirection (1=rises through, 2=falls through). "
+                    f"Order may be rejected. symbol={symbol}, side={side}, "
+                    f"triggerPrice={triggerPrice}"
+                )
 
             # Execute order
             result = self.client.place_order(**request_data)

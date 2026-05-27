@@ -218,9 +218,10 @@ def place_order(
     timeInForce: Optional[str] = Field(default=None, description="Time in force (GTC, IOC, FOK, PostOnly)"),
     orderLinkId: Optional[str] = Field(default=None, description="Order link ID"),
     isLeverage: Optional[int] = Field(default=None, description="Use leverage (0: No, 1: Yes)"),
-    orderFilter: Optional[str] = Field(default=None, description="Order filter (Order, tpslOrder, StopOrder)"),
-    triggerPrice: Optional[str] = Field(default=None, description="Trigger price"),
-    triggerBy: Optional[str] = Field(default=None, description="Trigger basis"),
+    orderFilter: Optional[str] = Field(default=None, description="Order filter (Order, tpslOrder, StopOrder). Use 'StopOrder' for conditional/stop-limit orders (hidden from order book until triggered)."),
+    triggerPrice: Optional[str] = Field(default=None, description="Trigger price for conditional orders"),
+    triggerBy: Optional[str] = Field(default=None, description="Trigger basis (LastPrice, MarkPrice, IndexPrice)"),
+    triggerDirection: Optional[int] = Field(default=None, description="Conditional order trigger direction. REQUIRED when triggerPrice is set: 1=triggered when price RISES through triggerPrice (e.g., short entry above market), 2=triggered when price FALLS through triggerPrice (e.g., stop-loss below market)."),
     orderIv: Optional[str] = Field(default=None, description="Order volatility"),
     takeProfit: Optional[str] = Field(default=None, description="Take profit price"),
     stopLoss: Optional[str] = Field(default=None, description="Stop loss price"),
@@ -229,7 +230,10 @@ def place_order(
     tpLimitPrice: Optional[str] = Field(default=None, description="Take profit limit price"),
     slLimitPrice: Optional[str] = Field(default=None, description="Stop loss limit price"),
     tpOrderType: Optional[str] = Field(default=None, description="Take profit order type (Market, Limit)"),
-    slOrderType: Optional[str] = Field(default=None, description="Stop loss order type (Market, Limit)")
+    slOrderType: Optional[str] = Field(default=None, description="Stop loss order type (Market, Limit)"),
+    tpslMode: Optional[str] = Field(default=None, description="TP/SL mode: 'Full' (default — closes entire position) or 'Partial' (requires explicit qty)"),
+    reduceOnly: Optional[bool] = Field(default=None, description="If True, order only reduces position size — critical for hedge closes (e.g., closing short hedge with buy). Prevents accidental position opening."),
+    closeOnTrigger: Optional[bool] = Field(default=None, description="If True, conditional order will close the position when triggered (used for TP/SL on existing positions)")
 ) -> Dict:
     """
     Execute order
@@ -271,8 +275,14 @@ def place_order(
             - Order: Regular order (default)
             - tpslOrder: TP/SL order
             - StopOrder: Stop order
-        triggerPrice (Optional[str]): Trigger price
-        triggerBy (Optional[str]): Trigger basis
+        triggerPrice (Optional[str]): Trigger price for conditional orders
+        triggerBy (Optional[str]): Trigger basis (LastPrice, MarkPrice, IndexPrice)
+        triggerDirection (Optional[int]): Conditional order trigger direction.
+            REQUIRED for conditional/stop orders (orderFilter=StopOrder).
+            - 1: Triggered when LAST PRICE RISES through triggerPrice
+                 (e.g., short hedge entry above current market)
+            - 2: Triggered when LAST PRICE FALLS through triggerPrice
+                 (e.g., stop-loss exit below current market for long position)
         orderIv (Optional[str]): Order volatility
         takeProfit (Optional[str]): Take profit price
         stopLoss (Optional[str]): Stop loss price
@@ -282,6 +292,14 @@ def place_order(
         slLimitPrice (Optional[str]): Stop loss limit price
         tpOrderType (Optional[str]): Take profit order type (Market, Limit)
         slOrderType (Optional[str]): Stop loss order type (Market, Limit)
+        tpslMode (Optional[str]): TP/SL mode for futures positions
+            - "Full": TP/SL closes entire position (default for hedge mode)
+            - "Partial": TP/SL closes part of position (requires explicit qty)
+        reduceOnly (Optional[bool]): If True, order only reduces position size.
+            Critical for hedge closes (e.g., closing short hedge with buy).
+            Prevents accidental position opening.
+        closeOnTrigger (Optional[bool]): If True, conditional order will close
+            the position when triggered (used for TP/SL on existing positions).
 
     Returns:
         Dict: Order result
@@ -300,6 +318,28 @@ def place_order(
         # Futures trading
         place_order("linear", "BTCUSDT", "Buy", "Market", "0.001", positionIdx="1")  # Buy market price for long position
         place_order("linear", "BTCUSDT", "Sell", "Market", "0.001", positionIdx="2")  # Sell market price for short position
+
+        # Conditional Stop-Limit Order (HIDDEN from order book — stealth advantage)
+        # Short hedge entry above current price ($0.55 → trigger at $0.70):
+        place_order("linear", "BSBUSDT", "Sell", "Limit", "13000",
+                   price="0.7020",                # Limit price (fill)
+                   triggerPrice="0.7015",          # Trigger price (activation)
+                   triggerDirection=1,             # 1 = price rises through trigger
+                   triggerBy="LastPrice",
+                   orderFilter="StopOrder",        # Makes it conditional (hidden)
+                   positionIdx="2",                # Short hedge
+                   takeProfit="0.5950",            # Auto-attached TP after fill
+                   tpTriggerBy="LastPrice")
+
+        # Conditional Stop-Loss (below current price, closes long position):
+        place_order("linear", "BTCUSDT", "Sell", "Market", "0.001",
+                   triggerPrice="60000",
+                   triggerDirection=2,             # 2 = price falls through trigger
+                   triggerBy="MarkPrice",
+                   orderFilter="StopOrder",
+                   positionIdx="1",
+                   reduceOnly=True,                # Only closes position
+                   closeOnTrigger=True)            # Position close on trigger
 
     Notes:
         1. Spot trading order quantity restrictions:
@@ -346,11 +386,14 @@ def place_order(
             qty=qty, price=price, positionIdx=positionIdx,
             timeInForce=timeInForce, orderLinkId=orderLinkId,
             isLeverage=isLeverage, orderFilter=orderFilter,
-            triggerPrice=triggerPrice, triggerBy=triggerBy, orderIv=orderIv,
+            triggerPrice=triggerPrice, triggerBy=triggerBy,
+            triggerDirection=triggerDirection, orderIv=orderIv,
             takeProfit=takeProfit, stopLoss=stopLoss,
             tpTriggerBy=tpTriggerBy, slTriggerBy=slTriggerBy,
             tpLimitPrice=tpLimitPrice, slLimitPrice=slLimitPrice,
-            tpOrderType=tpOrderType, slOrderType=slOrderType
+            tpOrderType=tpOrderType, slOrderType=slOrderType,
+            tpslMode=tpslMode, reduceOnly=reduceOnly,
+            closeOnTrigger=closeOnTrigger
         )
         if result.get("retCode") != 0:
             logger.error(f"Failed to place order: {result.get('retMsg')}")
@@ -702,7 +745,7 @@ Available tools:
 - get_trades(category, symbol, limit) - Get recent trade history: Retrieve recent trade history for a specific category and symbol. limit parameter can be used to specify the number of trades to retrieve.
 - get_wallet_balance(accountType, coin) - Get wallet balance: Retrieve wallet balance information for a specific account type and coin.
 - get_positions(category, symbol) - Get position information: Retrieve position information for a specific category and symbol.
-- place_order(category, symbol, side, orderType, qty, price, timeInForce, orderLinkId, isLeverage, orderFilter, triggerPrice, triggerBy, orderIv, positionIdx) - Execute order: Execute an order. Various parameters can be used to specify the details of the order.
+- place_order(category, symbol, side, orderType, qty, price, timeInForce, orderLinkId, isLeverage, orderFilter, triggerPrice, triggerBy, triggerDirection, orderIv, positionIdx, takeProfit, stopLoss, tpTriggerBy, slTriggerBy, tpLimitPrice, slLimitPrice, tpOrderType, slOrderType, tpslMode, reduceOnly, closeOnTrigger) - Execute order: Execute an order. Supports regular limit/market orders, conditional/stop-limit orders (orderFilter=StopOrder + triggerPrice + triggerDirection), and attached TP/SL. Critical for hedge cycles: use triggerDirection=1 for short entry above market, =2 for stop-loss below market. reduceOnly=True for hedge closes.
 - cancel_order(category, symbol, orderId, orderLinkId, orderFilter) - Cancel order: Cancel a specific order. orderId, orderLinkId, and orderFilter parameters can be used to specify the order to cancel.
 - get_order_history(category, symbol, orderId, orderLinkId, orderFilter, orderStatus, startTime, endTime, limit) - Get order history: Retrieve order history. Various parameters can be used to specify the retrieval range and conditions.
 - get_open_orders(category, symbol, orderId, orderLinkId, orderFilter, limit) - Get open orders: Retrieve open orders. limit parameter can be used to specify the number of orders to retrieve.
